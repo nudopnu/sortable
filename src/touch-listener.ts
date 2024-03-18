@@ -10,10 +10,12 @@ export class TouchListener {
     private touchState: 'idle' | 'touch' | 'hold' | 'drag' | 'scroll' = 'idle';
 
     constructor(element: HTMLElement, private options: {
-        minTimeHold?: number,
+        minTimeToHold?: number,
         onTap?: (event: TouchEvent) => void,
         onHold?: (event: TouchEvent) => void,
         onDragStart?: (event: TouchEvent) => void,
+        onDrag?: (event: TouchEvent) => void,
+        onDragEnd?: (event: TouchEvent) => void,
         onScroll?: (event: TouchEvent) => void,
         onHoldRelease?: (event: TouchEvent) => void,
     } = {}) {
@@ -28,17 +30,19 @@ export class TouchListener {
     }
 
     private onTouchend(event: TouchEvent) {
-        const { onTap, onHoldRelease } = this.options;
+        const { onTap, onHoldRelease, onDragEnd } = this.options;
         if (this.touchState === 'touch') {
             onTap && onTap(event);
         } else if (this.touchState === 'hold') {
             onHoldRelease && onHoldRelease(event);
+        } else if (this.touchState === 'drag') {
+            onDragEnd && onDragEnd(event);
         }
         this.touchState = 'idle';
     }
 
     private onTouchStart(event: TouchEvent) {
-        const { onHold, minTimeHold } = this.options;
+        const { onHold, minTimeToHold: minTimeHold } = this.options;
         const { touches } = event;
         if (touches.length !== 1) return;
         this.lastTouch = event.touches[0];
@@ -52,7 +56,7 @@ export class TouchListener {
     }
 
     private onTouchMove(event: TouchEvent) {
-        const { onScroll, onDragStart } = this.options;
+        const { onScroll, onDragStart, onDrag } = this.options;
         if (this.touchState === 'touch') {
             event.preventDefault();
             this.touchState = 'scroll';
@@ -63,6 +67,7 @@ export class TouchListener {
             onDragStart && onDragStart(event);
         } else if (this.touchState === 'drag') {
             event.preventDefault();
+            onDrag && onDrag(event);
         }
     }
 }
