@@ -39,6 +39,7 @@ export class SortableList<T> {
     selectedIds: number[];
     dataEntries: DataEntry<T>[];
     ghostsParent: HTMLElement | undefined;
+    originalHeight = -1;
     placeHolderSrcId = -1;
     placeHolderDstId = -1;
     dstPlacholder: HTMLElement | undefined;
@@ -84,6 +85,7 @@ export class SortableList<T> {
                     // Init state
                     const currentId = index;
                     this.placeHolderSrcId = currentId;
+                    this.originalHeight = this.dataEntries[currentId].wrapper.getBoundingClientRect().height;
                     this.listState = 'dragging';
 
                     // Create ghostsParent
@@ -122,22 +124,24 @@ export class SortableList<T> {
                         this.ghostsParent!.style.top = `${clientY}px`;
                         this.ghostsParent!.style.left = `${clientX}px`;
 
-                        if (this.listState === 'swapend') {
-                            // this.dstPlacholder!.style.minHeight = `0`;
-                            this.listState = 'dragging';
-                        };
-                        if (this.listState !== 'dragging') return;
+                        if (this.listState !== 'dragging' && this.listState !== 'swapend') return;
 
                         // Get hovered element as possible swap target
                         const elements = (document.elementsFromPoint(clientX, clientY) as HTMLElement[])
                             .filter(element => element.className === 'wrapper');
 
                         if (elements.length === 1) {
+                            if (this.listState === 'swapend') {
+                                this.listState = 'dragging';
+                                this.dstPlacholder!.style.minHeight = '0px';
+                            };
                             element = elements[0];
                             const hoverId = parseInt(element.id);
                             this.placeHolderDstId = hoverId;
                             const placeHolderSrcPosition = this.dataEntries[this.placeHolderSrcId].position;
                             const hoverPosition = this.dataEntries[hoverId].position;
+
+                            
                             const startPosition = Math.min(placeHolderSrcPosition, hoverPosition);
                             const endPosition = Math.max(placeHolderSrcPosition, hoverPosition);
 
@@ -166,14 +170,16 @@ export class SortableList<T> {
                         }
                     });
                     if (this.listState === 'swapstart') {
-                        const { wrapper } = this.dataEntries[this.placeHolderSrcId]
-                        const { height } = wrapper.getBoundingClientRect();
-                        setTimeout(() => {
-                            this.dstPlacholder!.style.minHeight = `${height}px`;
-                            wrapper.style.maxHeight = '0px';
-                            // this.listState = 'swapend';
-                        }, 100);
                         this.listState = 'swap';
+                        setTimeout(() => {
+                            this.dstPlacholder!.style.minHeight = `${this.originalHeight}px`;
+                            wrapper.style.maxHeight = '0px';
+                            setTimeout(() => {
+                                console.log('dhoens');
+                                this.listState = 'swapend';
+                            }, 300);
+
+                        }, 100);
                     }
                 },
                 onDragEnd: () => {
