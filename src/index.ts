@@ -155,7 +155,7 @@ export class SortableList<T> {
                             const lastEntry = this.dataEntries[hoverId].wrapper;
 
                             if (hoverPosition > placeHolderSrcPosition) {
-                                element.style.backgroundColor = 'red';
+                                element.style.backgroundColor = 'blue';
                                 this.rootElement.insertBefore(this.dstPlacholder, lastEntry.nextSibling);
                                 this.listState = 'swapstart';
                             } else if (hoverPosition < placeHolderSrcPosition) {
@@ -170,7 +170,7 @@ export class SortableList<T> {
                         const { height } = wrapper.getBoundingClientRect();
                         setTimeout(() => {
                             this.dstPlacholder!.style.minHeight = `${height}px`;
-                            wrapper.style.maxHeight = '0';
+                            wrapper.style.maxHeight = '0px';
                             // this.listState = 'swapend';
                         }, 100);
                         this.listState = 'swap';
@@ -192,10 +192,11 @@ export class SortableList<T> {
                         this.dataEntries[parseInt(element.id)].position = position;
                     });
                     this.dataEntries.forEach((entry) => {
-                        entry.element.innerText = `${entry.data}_${entry.position}`;
+                        entry.element.innerText = `${entry.data} (${entry.position})`;
+                        entry.wrapper.style.color = 'black';
+                        entry.wrapper.style.backgroundColor = 'white';
                     });
                     onSwap && onSwap(this.selectedIds.map(id => this.dataEntries[id]), this.dataEntries[this.placeHolderDstId]);
-                    // onChange && onChange(());
                 },
                 onScroll: () => console.log('onScroll'),
             })
@@ -212,7 +213,7 @@ export class SortableList<T> {
     private createWrapper(id: number) {
         const { animationDuration } = this.options;
         const wrapper = document.createElement('div');
-        wrapper.style.transition = `max - height ${animationDuration}ms ease`;
+        wrapper.style.transition = `max-height ${animationDuration}ms ease, background-color ${animationDuration}ms ease`;
         wrapper.style.overflow = 'hidden';
         wrapper.className = 'wrapper';
         wrapper.id = `${id} `;
@@ -282,7 +283,7 @@ root.style.maxHeight = "300px";
 new SortableList(root, data, {
     render: (data, index) => {
         const element = document.createElement('div');
-        element.innerText = `${data}_${index}`;
+        element.innerText = `${data} (${index})`;
         element.style.height = "50px";
         element.style.width = "50px";
         element.style.marginBottom = "10px";
