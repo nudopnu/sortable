@@ -29,6 +29,7 @@ export class TouchListener {
         element.addEventListener('touchmove', (event) => this.onTouchMove(event), false);
         element.addEventListener('touchstart', (event) => this.onTouchStart(event));
         element.addEventListener('touchend', (event) => this.onTouchend(event));
+        // element.addEventListener('pointermove', (event) => console.log);
     }
 
     private onTouchend(event: TouchEvent) {

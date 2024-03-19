@@ -18,6 +18,7 @@ export class SortableList<T> {
     selectedIds: number[];
     dataEntries: DataEntry<T>[];
     ghostsParent: HTMLElement | undefined;
+    placeHolderPosition = -1;
 
     constructor(
         root: HTMLElement,
@@ -36,6 +37,7 @@ export class SortableList<T> {
             wrapper.style.transition = `max-height ${duration}ms ease`;
             wrapper.style.overflow = 'hidden';
             wrapper.className = 'wrapper';
+            wrapper.id = `${id}`;
             wrapper.appendChild(element);
             root.appendChild(wrapper);
 
@@ -60,6 +62,7 @@ export class SortableList<T> {
                 },
                 onDragStart: (event) => {
                     console.log('onDragStart');
+                    this.placeHolderPosition = this.positions[id];
                     this.listState = 'dragging';
                     const currentId = id;
 
@@ -101,12 +104,20 @@ export class SortableList<T> {
                     });
                 },
                 onDrag: (event) => {
-                    const { clientX, clientY } = event.touches[0];
-                    this.ghostsParent!.style.top = `${clientY}px`;
-                    this.ghostsParent!.style.left = `${clientX}px`;
-                    console.log(event);
-                    
-                    // const elements = (document.elementsFromPoint(clientX, clientY) as HTMLElement[]).filter(elem => elem.className === 'wrapper');
+                    requestAnimationFrame(() => {
+                        const { clientX, clientY } = event.touches[0];
+                        this.ghostsParent!.style.top = `${clientY}px`;
+                        this.ghostsParent!.style.left = `${clientX}px`;
+                        const elements = (document.elementsFromPoint(clientX, clientY) as HTMLElement[]).filter(element => element.className === 'wrapper');
+                        if (elements.length === 1) {
+                            const element = elements[0];
+                            if (parseInt(element.id) > this.placeHolderPosition) {
+                                element.style.backgroundColor = 'red';
+                            } else if (parseInt(element.id) < this.placeHolderPosition) {
+                                element.style.backgroundColor = 'green';
+                            }
+                        }
+                    });
                 },
                 onDragEnd: () => {
                     console.log('onDragEnd');
