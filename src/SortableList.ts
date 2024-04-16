@@ -279,45 +279,38 @@ root.style.display = "inline-block";
 root.style.overflowY = "scroll";
 root.style.maxHeight = "300px";
 
-const children = [] as HTMLElement[];
-data.forEach((data, index) => {
-    const element = document.createElement('div');
-    element.innerText = `${data} (${index})`;
-    element.style.height = "50px";
-    element.style.width = "50px";
-    element.style.marginBottom = "10px";
-    element.style.border = "1px solid grey";
-    element.style.textAlign = "center";
-    element.style.backgroundColor = "#fffa"
-    root.appendChild(element);
-    children.push(element);
-});
-
-root.parentElement!.appendChild(root.cloneNode(true));
-
-(async () => {
-    let children = [...root.children] as HTMLElement[];
-    await new Swapper(children[3], children.slice(1, 3)).swap();
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    children = [...root.children] as HTMLElement[];
-    await new Swapper(children[0], children.slice(1, 3)).swap();
-})();
-// new SortableList(root, data, {
-//     render: (data, index) => {
-//         const element = document.createElement('div');
-//         element.innerText = `${data} (${index})`;
-//         element.style.height = "50px";
-//         element.style.width = "50px";
-//         element.style.marginBottom = "10px";
-//         element.style.border = "1px solid grey";
-//         element.style.textAlign = "center";
-//         element.style.backgroundColor = "#fffa";
-//         return element;
-//     },
-//     animationDuration: 300,
-//     onSwap: (selection, target) => {
-//         console.log('onSwap', selection.map(entry => `${entry.data}:${entry.position}`), '=>', `${target.data}:${target.position}`);
-//     },
-//     onDragStart: () => console.log('onDragStart'),
-//     onScroll: () => console.log('onScroll'),
+// const children = [] as HTMLElement[];
+// data.forEach((data, index) => {
+//     const element = document.createElement('div');
+//     element.innerText = `${data} (${index})`;
+//     element.style.height = "50px";
+//     element.style.width = "50px";
+//     element.style.marginBottom = "10px";
+//     element.style.border = "1px solid grey";
+//     element.style.textAlign = "center";
+//     element.style.backgroundColor = "#fffa"
+//     root.appendChild(element);
+//     children.push(element);
 // });
+
+// root.parentElement!.appendChild(root.cloneNode(true));
+
+new SortableList(root, data, {
+    render: (data, index) => {
+        const element = document.createElement('div');
+        element.innerText = `${data} (${index})`;
+        element.style.height = "50px";
+        element.style.width = "50px";
+        element.style.marginBottom = "10px";
+        element.style.border = "1px solid grey";
+        element.style.textAlign = "center";
+        element.style.backgroundColor = "#fffa";
+        return element;
+    },
+    animationDuration: 300,
+    onSwap: (selection, target) => {
+        console.log('onSwap', selection.map(entry => `${entry.data}:${entry.position}`), '=>', `${target.data}:${target.position}`);
+    },
+    onDragStart: () => console.log('onDragStart'),
+    onScroll: () => console.log('onScroll'),
+});
