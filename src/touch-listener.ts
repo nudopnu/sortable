@@ -1,28 +1,16 @@
+import { TouchListenerOptions, TouchListenerState } from "./types";
+import { DEFAULT_TOUCH_LISTENER_OPTIONS } from "./defaults";
 
-const defaultOptions: TouchListenerOptions = {
-    minTimeToHold: 300,
-};
-
-export type TouchListenerOptions = {
-    minTimeToHold?: number;
-    onTap?: (event: TouchEvent) => void;
-    onHold?: (event: TouchEvent) => void;
-    onDragStart?: (event: TouchEvent) => void;
-    onDrag?: (event: TouchEvent) => void;
-    onDragEnd?: (event: TouchEvent) => void;
-    onScroll?: (event: TouchEvent) => void;
-    onHoldRelease?: (event: TouchEvent) => void;
-};
 
 export class TouchListener {
 
     private lastTouch: Touch | undefined;
-    private touchState: 'idle' | 'touch' | 'hold' | 'drag' | 'scroll' = 'idle';
+    private touchState: TouchListenerState = 'idle';
     private listeners: EventListener[] = [];
 
     constructor(element: HTMLElement, private options: TouchListenerOptions = {}) {
         this.options = {
-            ...defaultOptions,
+            ...DEFAULT_TOUCH_LISTENER_OPTIONS,
             ...options,
         };
         element.style.userSelect = 'none';

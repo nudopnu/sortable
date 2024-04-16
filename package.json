@@ -11,7 +11,7 @@
     "start": "tsup --watch"
   },
   "keywords": [],
-  "author": "",
+  "author": "nudopnu",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.28",
