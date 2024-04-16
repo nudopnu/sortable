@@ -13,6 +13,8 @@ export type SortableOptions<T> = TouchListenerOptions & {
     render: (data: T, index?: number) => HTMLElement;
     animationDuration?: number;
     onSwap?: (selection: DataEntry<T>[], target: DataEntry<T>) => void;
+    onSwapStart?: () => void,
+    onSwapEnd?: () => void,
     onChange?: (oldData: T[], newData: T[]) => void;
 };
 

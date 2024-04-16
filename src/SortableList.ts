@@ -3,7 +3,6 @@ import { getDefaultOptions } from "./defaults";
 import { TouchListener } from "./TouchListener";
 import { DataEntry, SortableListState, SortableOptions } from "./types";
 
-
 export class SortableList<T> {
 
     private listState: SortableListState;
@@ -13,7 +12,7 @@ export class SortableList<T> {
     originalHeight = -1;
     placeHolderSrcId = -1;
     placeHolderDstId = -1;
-    dstPlacholder: HTMLElement | undefined;
+    swapper?: Swapper;
 
     constructor(
         private rootElement: HTMLElement,
@@ -37,7 +36,7 @@ export class SortableList<T> {
         const id = index;
         const position = index;
         this.dataEntries.push({ id, data, wrapper, element, position });
-        const { onTap, onHold, onHoldRelease, onDragStart, onDrag, onScroll, onSwap } = this.options;
+        const { onTap, onHold, onHoldRelease, onDragStart, onDrag, onScroll, onSwap, onSwapStart, onSwapEnd } = this.options;
         new TouchListener(wrapper, {
             onTap: (event) => {
                 if (this.listState === 'selecting') {
@@ -65,7 +64,6 @@ export class SortableList<T> {
                 // Create ghostsParent at original item position
                 const { wrapper } = this.dataEntries[currentId];
                 const { x, y } = wrapper.getBoundingClientRect();
-                console.log(x, y);
 
                 this.ghostsParent = this.createGhostsParent(x, y);
                 const { clientX, clientY } = event.touches[0];
@@ -95,7 +93,7 @@ export class SortableList<T> {
                 });
                 onDragStart && onDragStart(event);
             },
-            onDrag: (event) => {
+            onDrag: async (event) => {
                 let element: HTMLElement | undefined;
                 requestAnimationFrame(() => {
 
@@ -117,10 +115,10 @@ export class SortableList<T> {
                     element = elements[0];
 
                     if (this.listState === 'swapend') {
-                        this.listState = 'dragging';
-                        this.dstPlacholder!.style.minHeight = '-1px';
-                        console.log(this.dstPlacholder);
-
+                        onSwapEnd && onSwapEnd();
+                        // this.listState = 'dragging';
+                        // this.dstPlacholder!.style.minHeight = '-1px';
+                        // console.log(this.dstPlacholder);
                     };
                     const hoverId = parseInt(element.id);
                     this.placeHolderDstId = hoverId;
@@ -137,53 +135,36 @@ export class SortableList<T> {
                     entriesInBetween.forEach(entry => {
                         entry.wrapper.style.color = 'red';
                     });
-                    this.dstPlacholder = document.createElement('div');
-                    this.dstPlacholder.className = 'dst-placeholder';
-                    this.dstPlacholder.style.minHeight = `-1`;
-                    this.dstPlacholder.style.transition = 'min-height 300ms ease';
-                    const lastEntry = this.dataEntries[hoverId].wrapper;
 
+                    const pivot = this.dataEntries[this.placeHolderSrcId].wrapper;
+                    const others = entriesInBetween.map(entry => entry.wrapper).filter(element => element !== pivot);
                     if (hoverPosition > placeHolderSrcPosition) {
                         element.style.backgroundColor = 'blue';
-                        this.rootElement.insertBefore(this.dstPlacholder, lastEntry.nextSibling);
                         this.listState = 'swapstart';
+                        this.swapper = new Swapper(pivot, others);
                     } else if (hoverPosition < placeHolderSrcPosition) {
                         element.style.backgroundColor = 'green';
-                        this.rootElement.insertBefore(this.dstPlacholder, lastEntry);
                         this.listState = 'swapstart';
+                        this.swapper = new Swapper(pivot, others);
                     }
                 });
                 if (this.listState === 'swapstart') {
+                    onSwapStart && onSwapStart();
                     this.listState = 'swap';
-                    setTimeout(() => {
-                        this.dstPlacholder!.style.minHeight = `${this.originalHeight}px`;
-                        wrapper.style.maxHeight = '0px';
-                        setTimeout(() => {
-                            console.log('dhoens');
-                            this.listState = 'swapend';
-                        }, 300);
-
-                    }, 100);
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                    await this.swapper!.swap()
+                    // await new Promise(resolve => setTimeout(resolve, 300));
+                    this.listState = 'swapend';
                 }
             },
             onDragEnd: () => {
                 this.listState = 'idle';
-                this.dstPlacholder?.replaceWith(...this.selectedIds.map(id => this.dataEntries[id].wrapper));
-                [...this.selectedIds].forEach(id => {
-                    this.dataEntries[id].wrapper.style.maxHeight = id === this.placeHolderSrcId ? '' : this.dataEntries[id].ghost!.getBoundingClientRect().height + 'px';
-                    this.dataEntries[id].ghost!.remove();
-                    this.deselect(id);
-                });
                 this.ghostsParent?.remove();
-
-                [...root.children].filter(element => element.className === 'wrapper').forEach((element, position) => {
-                    this.dataEntries[parseInt(element.id)].position = position;
-                });
-                this.dataEntries.forEach((entry) => {
-                    entry.element.innerText = `${entry.data} (${entry.position})`;
-                    // entry.wrapper.style.color = 'black';
-                    // entry.wrapper.style.backgroundColor = 'white';
-                });
+                [...root.children]
+                    .filter(element => element.className === 'wrapper')
+                    .forEach((element, position) => {
+                        this.dataEntries[parseInt(element.id)].position = position;
+                    });
                 onSwap && onSwap(this.selectedIds.map(id => this.dataEntries[id]), this.dataEntries[this.placeHolderDstId]);
             },
             onScroll,
@@ -209,7 +190,6 @@ export class SortableList<T> {
     }
 
     private createGhostsParent(x: number, y: number) {
-        const { animationDuration } = this.options
         const ghostsParent = document.createElement('div');
         ghostsParent.className = 'ghosts-aparent';
         ghostsParent.style.position = 'fixed';
@@ -217,12 +197,12 @@ export class SortableList<T> {
         ghostsParent.style.left = `${x} px`;
         ghostsParent.style.transition = 'top 100ms ease, left 100ms ease';
 
-        ghostsParent.style.backgroundColor = 'red';
-        ghostsParent.style.width = '10px';
-        ghostsParent.style.height = '10px';
-        ghostsParent.style.pointerEvents = 'none';
-        ghostsParent.style.userSelect = 'none';
-        console.log(ghostsParent);
+        // ghostsParent.style.backgroundColor = 'red';
+        // ghostsParent.style.width = '10px';
+        // ghostsParent.style.height = '10px';
+        // ghostsParent.style.pointerEvents = 'none';
+        // ghostsParent.style.userSelect = 'none';
+        // console.log(ghostsParent);
 
         return ghostsParent;
     }
@@ -313,4 +293,6 @@ new SortableList(root, data, {
     },
     onDragStart: () => console.log('onDragStart'),
     onScroll: () => console.log('onScroll'),
+    onSwapStart: () => console.log('onSwapStart'),
+    onSwapEnd: () => console.log('onSwapEnd'),
 });

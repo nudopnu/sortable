@@ -12,6 +12,7 @@ export class Swapper {
     constructor(private pivot: HTMLElement, private others: HTMLElement[]) {
         this.parent = pivot.parentElement!;
         this.childToIdx = new TwoWayMap<HTMLElement, number>();
+        if (others.includes(pivot)) throw new Error("Pivot should be excluded from 'others'");
         const allChildren = Array.from(this.parent.children);
         let minIdx, maxIdx;
         for (let idx = 0; idx < allChildren.length; idx++) {
