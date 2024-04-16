@@ -299,6 +299,11 @@ export class PlaceHolder {
         this.element.style.minWidth = '0';
         this.element.style.minHeight = '0';
     }
+
+    destroy() {
+        this.element.remove();
+    }
+
 }
 
 
@@ -324,10 +329,12 @@ export class Swapper {
             if (!maxIdx || maxIdx < idx) maxIdx = idx;
         }
         const pivotIdx = this.childToIdx.get(pivot)!;
+        pivot.className = 'pivot';
         this.pivotElementPosition = pivotIdx < minIdx! ? 'before' : 'after';
     }
 
-    swap() {
+    async swap() {
+        this.state = 'swapping';
         const minIdx = Math.min(...this.others.map(elem => this.childToIdx.get(elem)!));
         const maxIdx = Math.max(...this.others.map(elem => this.childToIdx.get(elem)!));
         const startChild = this.childToIdx.reverseGet(minIdx)!;
@@ -346,19 +353,16 @@ export class Swapper {
         }
         framePlaceHolder.element.style.position = 'relative';
         framePlaceHolder.element.prepend(startPlaceHolder.element);
-        const parentTop = this.parent.getBoundingClientRect().top;
         const tops = this.others.map(element => element.getBoundingClientRect().top);
         this.others.forEach((element, idx) => {
             this.parent.removeChild(element);
             framePlaceHolder.element.appendChild(element);
             element.style.position = 'absolute';
             element.style.top = `${tops[idx] - top}px`;
-            console.log(element);
         });
         this.parent.insertBefore(framePlaceHolder.element, this.pivot);
         this.parent.insertBefore(startPlaceHolder.element, framePlaceHolder.element);
         this.parent.insertBefore(endPlaceholder.element, this.pivot);
-        console.log(this.parent);
         this.parent.removeChild(this.pivot);
         this.pivot.style.position = 'absolute';
         this.pivot.style.transition = `top 300ms ease`;
@@ -368,17 +372,42 @@ export class Swapper {
         } else {
             endPlaceholder.element.appendChild(this.pivot);
         }
-        setTimeout(() => {
-            if (this.pivotElementPosition === 'before') {
-                startPlaceHolder.collapse();
-                endPlaceholder.uncollapse();
-                this.pivot.style.top = `${frameHeight}px`;
-            } else {
-                endPlaceholder.collapse();
-                startPlaceHolder.uncollapse();
-                this.pivot.style.top = `0`;
-            }
-        }, 500);
+        await new Promise(r => setTimeout(r, 300));
+        if (this.pivotElementPosition === 'before') {
+            startPlaceHolder.collapse();
+            endPlaceholder.uncollapse();
+            this.pivot.style.top = `${frameHeight}px`;
+        } else {
+            endPlaceholder.collapse();
+            startPlaceHolder.uncollapse();
+            this.pivot.style.top = `-${frameHeight + placeholderHeight}px`;
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+        startPlaceHolder.destroy();
+        endPlaceholder.destroy();
+        this.pivot.style.position = 'static';
+
+        if (this.pivotElementPosition === 'before') {
+            this.others.forEach(element => {
+                element.style.position = 'static';
+                this.parent.insertBefore(element, framePlaceHolder.element)
+            });
+            this.parent.insertBefore(this.pivot, framePlaceHolder.element)
+        } else {
+            this.parent.insertBefore(this.pivot, framePlaceHolder.element)
+            this.others.forEach(element => {
+                element.style.position = 'static';
+                this.parent.insertBefore(element, framePlaceHolder.element)
+            });
+        }
+
+        framePlaceHolder.destroy();
+        if (this.pivotElementPosition === 'before') {
+            this.pivotElementPosition = 'after';
+        } else {
+            this.pivotElementPosition = 'before';
+        }
+        this.state = 'idle';
     }
 }
 
@@ -404,11 +433,15 @@ data.forEach((data, index) => {
     children.push(element);
 });
 
-root.parentElement!.appendChild(root.cloneNode(true))
+root.parentElement!.appendChild(root.cloneNode(true));
 
-const swapper = new Swapper(children[0], children.slice(1, 4))
-swapper.swap();
-
+(async () => {
+    let children = [...root.children] as HTMLElement[];
+    await new Swapper(children[3], children.slice(1, 3)).swap();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    children = [...root.children] as HTMLElement[];
+    await new Swapper(children[0], children.slice(1, 3)).swap();
+})();
 // new SortableList(root, data, {
 //     render: (data, index) => {
 //         const element = document.createElement('div');
