@@ -1,6 +1,7 @@
 import { getDefaultOptions } from "./defaults";
 import { TouchListener } from "./touch-listener";
 import { DataEntry, SortableListState, SortableOptions } from "./types";
+import { TwoWayMap } from "./utils";
 
 
 export class SortableList<T> {
@@ -113,12 +114,14 @@ export class SortableList<T> {
                     const elements = (document.elementsFromPoint(clientX, clientY) as HTMLElement[])
                         .filter(element => element.className === 'wrapper');
                     if (elements.length !== 1) return;
+                    element = elements[0];
 
                     if (this.listState === 'swapend') {
                         this.listState = 'dragging';
                         this.dstPlacholder!.style.minHeight = '-1px';
+                        console.log(this.dstPlacholder);
+
                     };
-                    element = elements[0];
                     const hoverId = parseInt(element.id);
                     this.placeHolderDstId = hoverId;
                     const placeHolderSrcPosition = this.dataEntries[this.placeHolderSrcId].position;
@@ -269,29 +272,159 @@ export class SortableList<T> {
 
 }
 
+export class PlaceHolder {
+
+    element: HTMLElement;
+
+    constructor(
+        private targetWidth: number,
+        private targetHeight: number,
+        public collapsed = false,
+        private animationDuration = 300,
+    ) {
+        this.element = document.createElement('div');
+        this.element.className = 'placeholder';
+        this.element.style.position = 'relative';
+        this.element.style.transition = `min-width ${this.animationDuration}ms ease, min-height ${this.animationDuration}ms ease`;
+        if (collapsed) return;
+        this.uncollapse();
+    }
+
+    uncollapse() {
+        this.element.style.minWidth = `${this.targetWidth}px`;
+        this.element.style.minHeight = `${this.targetHeight}px`;
+    }
+
+    collapse() {
+        this.element.style.minWidth = '0';
+        this.element.style.minHeight = '0';
+    }
+}
+
+
+export class Swapper {
+
+    private state: 'idle' | 'swapping' = 'idle';
+    private pivotElementPosition: 'before' | 'after';
+    private parent: HTMLElement;
+    private childToIdx: TwoWayMap<HTMLElement, number>;
+
+    constructor(private pivot: HTMLElement, private others: HTMLElement[]) {
+        this.parent = pivot.parentElement!;
+        this.childToIdx = new TwoWayMap<HTMLElement, number>();
+        const allChildren = Array.from(this.parent.children);
+        let minIdx, maxIdx;
+        for (let idx = 0; idx < allChildren.length; idx++) {
+            const element = allChildren[idx] as HTMLElement;
+            this.childToIdx.set(element, idx);
+        }
+        for (let i = 0; i < others.length; i++) {
+            const idx = this.childToIdx.get(others[i])!;
+            if (!minIdx || minIdx > idx) minIdx = idx;
+            if (!maxIdx || maxIdx < idx) maxIdx = idx;
+        }
+        const pivotIdx = this.childToIdx.get(pivot)!;
+        this.pivotElementPosition = pivotIdx < minIdx! ? 'before' : 'after';
+    }
+
+    swap() {
+        const minIdx = Math.min(...this.others.map(elem => this.childToIdx.get(elem)!));
+        const maxIdx = Math.max(...this.others.map(elem => this.childToIdx.get(elem)!));
+        const startChild = this.childToIdx.reverseGet(minIdx)!;
+        const endChild = this.childToIdx.reverseGet(maxIdx)!;
+        const { top } = startChild.getBoundingClientRect();
+        const { top: bottom } = endChild.nextElementSibling!.getBoundingClientRect();
+        const frameHeight = bottom - top;
+        const placeholderHeight = frameHeight / this.others.length;
+        const framePlaceHolder = new PlaceHolder(1, frameHeight);
+        const startPlaceHolder = new PlaceHolder(1, placeholderHeight);
+        const endPlaceholder = new PlaceHolder(1, placeholderHeight);
+        if (this.pivotElementPosition === 'before') {
+            endPlaceholder.collapse();
+        } else {
+            startPlaceHolder.collapse();
+        }
+        framePlaceHolder.element.style.position = 'relative';
+        framePlaceHolder.element.prepend(startPlaceHolder.element);
+        const parentTop = this.parent.getBoundingClientRect().top;
+        const tops = this.others.map(element => element.getBoundingClientRect().top);
+        this.others.forEach((element, idx) => {
+            this.parent.removeChild(element);
+            framePlaceHolder.element.appendChild(element);
+            element.style.position = 'absolute';
+            element.style.top = `${tops[idx] - top}px`;
+            console.log(element);
+        });
+        this.parent.insertBefore(framePlaceHolder.element, this.pivot);
+        this.parent.insertBefore(startPlaceHolder.element, framePlaceHolder.element);
+        this.parent.insertBefore(endPlaceholder.element, this.pivot);
+        console.log(this.parent);
+        this.parent.removeChild(this.pivot);
+        this.pivot.style.position = 'absolute';
+        this.pivot.style.transition = `top 300ms ease`;
+        this.pivot.style.top = '0';
+        if (this.pivotElementPosition === 'before') {
+            startPlaceHolder.element.appendChild(this.pivot);
+        } else {
+            endPlaceholder.element.appendChild(this.pivot);
+        }
+        setTimeout(() => {
+            if (this.pivotElementPosition === 'before') {
+                startPlaceHolder.collapse();
+                endPlaceholder.uncollapse();
+                this.pivot.style.top = `${frameHeight}px`;
+            } else {
+                endPlaceholder.collapse();
+                startPlaceHolder.uncollapse();
+                this.pivot.style.top = `0`;
+            }
+        }, 500);
+    }
+}
+
+
 // example setup
-const data = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+const data = ["A", "B", "C", "D", "E", "F", "G"];// "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 const root = document.querySelector('#sortable') as HTMLElement;
 root.style.display = "inline-block";
 root.style.overflowY = "scroll";
 root.style.maxHeight = "300px";
 
-new SortableList(root, data, {
-    render: (data, index) => {
-        const element = document.createElement('div');
-        element.innerText = `${data} (${index})`;
-        element.style.height = "50px";
-        element.style.width = "50px";
-        element.style.marginBottom = "10px";
-        element.style.border = "1px solid grey";
-        element.style.textAlign = "center";
-        element.style.backgroundColor = "#fffa";
-        return element;
-    },
-    animationDuration: 300,
-    onSwap: (selection, target) => {
-        console.log('onSwap', selection.map(entry => `${entry.data}:${entry.position}`), '=>', `${target.data}:${target.position}`);
-    },
-    onDragStart: () => console.log('onDragStart'),
-    onScroll: () => console.log('onScroll'),
+const children = [] as HTMLElement[];
+data.forEach((data, index) => {
+    const element = document.createElement('div');
+    element.innerText = `${data} (${index})`;
+    element.style.height = "50px";
+    element.style.width = "50px";
+    element.style.marginBottom = "10px";
+    element.style.border = "1px solid grey";
+    element.style.textAlign = "center";
+    element.style.backgroundColor = "#fffa"
+    root.appendChild(element);
+    children.push(element);
 });
+
+root.parentElement!.appendChild(root.cloneNode(true))
+
+const swapper = new Swapper(children[0], children.slice(1, 4))
+swapper.swap();
+
+// new SortableList(root, data, {
+//     render: (data, index) => {
+//         const element = document.createElement('div');
+//         element.innerText = `${data} (${index})`;
+//         element.style.height = "50px";
+//         element.style.width = "50px";
+//         element.style.marginBottom = "10px";
+//         element.style.border = "1px solid grey";
+//         element.style.textAlign = "center";
+//         element.style.backgroundColor = "#fffa";
+//         return element;
+//     },
+//     animationDuration: 300,
+//     onSwap: (selection, target) => {
+//         console.log('onSwap', selection.map(entry => `${entry.data}:${entry.position}`), '=>', `${target.data}:${target.position}`);
+//     },
+//     onDragStart: () => console.log('onDragStart'),
+//     onScroll: () => console.log('onScroll'),
+// });
