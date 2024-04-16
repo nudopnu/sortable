@@ -1,3 +1,3 @@
-export * from './touch-listener';
-export * from './sortable-list';
+export * from './TouchListener';
+export * from './SortableList';
 export * from './types';
