@@ -25,7 +25,7 @@ export class Swapper {
             if (!maxIdx || maxIdx < idx) maxIdx = idx;
         }
         const pivotIdx = this.childToIdx.get(pivot)!;
-        pivot.className = 'pivot';
+        pivot.classList.add('pivot');
         this.pivotElementPosition = pivotIdx < minIdx! ? 'before' : 'after';
     }
 

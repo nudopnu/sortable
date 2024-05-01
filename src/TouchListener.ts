@@ -4,9 +4,7 @@ import { DEFAULT_TOUCH_LISTENER_OPTIONS } from "./defaults";
 
 export class TouchListener {
 
-    private lastTouch: Touch | undefined;
     private touchState: TouchListenerState = 'idle';
-    private listeners: EventListener[] = [];
 
     constructor(element: HTMLElement, private options: TouchListenerOptions = {}) {
         this.options = {
@@ -36,7 +34,6 @@ export class TouchListener {
         const { onHold, minTimeToHold: minTimeHold } = this.options;
         const { touches } = event;
         if (touches.length !== 1) return;
-        this.lastTouch = event.touches[0];
         this.touchState = 'touch';
         setTimeout(() => {
             if (this.touchState === 'touch') {
