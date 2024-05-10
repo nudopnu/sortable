@@ -1,8 +1,6 @@
 import { TwoWayMap } from "./utils";
 import { PlaceHolder } from "./PlaceHolder";
 
-
-
 export class Swapper {
 
     private pivotElementPosition: 'before' | 'after';
@@ -31,7 +29,7 @@ export class Swapper {
 
     async swap() {
 
-        // get start and end child of others
+        // get start and end child of 'others'
         const minIdx = Math.min(...this.others.map(elem => this.childToIdx.get(elem)!));
         const maxIdx = Math.max(...this.others.map(elem => this.childToIdx.get(elem)!));
         const startChild = this.childToIdx.reverseGet(minIdx)!;
@@ -45,7 +43,6 @@ export class Swapper {
         const startPlaceHolder = new PlaceHolder(1, placeholderHeight);
         const endPlaceholder = new PlaceHolder(1, placeholderHeight);
         const framePlaceHolder = new PlaceHolder(1, frameHeight);
-        framePlaceHolder.element.style.position = 'relative';
 
         // collapse the correct placeholder
         if (this.pivotElementPosition === 'before') {

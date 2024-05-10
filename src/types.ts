@@ -22,9 +22,7 @@ export type SortableListState = 'idle' | 'selecting' | 'dragging' | 'swapstart' 
 export type TouchListenerState = 'idle' | 'touch' | 'hold' | 'drag' | 'scroll';
 
 export type DataEntry<T> = {
-    id: number;
     data: T;
-    position: number;
     wrapper: HTMLElement;
     element: HTMLElement;
     ghost?: HTMLElement;

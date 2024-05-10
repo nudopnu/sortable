@@ -2,6 +2,7 @@ import { Swapper } from "./Swapper";
 import { getDefaultOptions } from "./defaults";
 import { TouchListener } from "./TouchListener";
 import { DataEntry, SortableListState, SortableOptions } from "./types";
+import { SwapperModel } from "./Swapper.model";
 
 export class SortableList<T> {
 
@@ -10,9 +11,12 @@ export class SortableList<T> {
     dataEntries: Map<number, DataEntry<T>>;
     ghostsParent: HTMLElement | undefined;
     originalHeight = -1;
-    placeHolderSrcId = -1;
-    placeHolderDstId = -1;
+    pivotId = -1;
+    targetId = -1;
     swapper?: Swapper;
+    model: SwapperModel;
+
+    onSwapCompleteInternal: (() => void) | undefined;
 
     constructor(
         private rootElement: HTMLElement,
@@ -23,6 +27,7 @@ export class SortableList<T> {
         this.dataEntries = new Map();
         this.listState = 'idle';
         this.dataList.forEach((data, index) => this.initEntry(data, index));
+        this.model = new SwapperModel(dataList.map((_, id) => id));
     }
 
     private initEntry(data: T, index: number) {
@@ -34,8 +39,7 @@ export class SortableList<T> {
 
         // Add logic
         const id = index;
-        const position = index;
-        this.dataEntries.set(id, { id, data, wrapper, element, position });
+        this.dataEntries.set(id, { data, wrapper, element });
         const { onScroll } = this.options;
         new TouchListener(wrapper, {
             onTap: (event) => this.onTap(index, event),
@@ -53,7 +57,7 @@ export class SortableList<T> {
 
         // Remember source element
         const currentId = sourceElementId;
-        this.placeHolderSrcId = currentId;
+        this.pivotId = currentId;
         this.originalHeight = this.dataEntries.get(currentId)!.wrapper.getBoundingClientRect().height;
 
         // Create ghostsParent at original item position
@@ -115,31 +119,33 @@ export class SortableList<T> {
             element = elements[0];
 
             const hoverId = parseInt(element.id);
-            this.placeHolderDstId = hoverId;
-            const placeHolderSrcPosition = this.dataEntries.get(this.placeHolderSrcId)!.position;
-            const hoverPosition = this.dataEntries.get(hoverId)!.position;
+            this.targetId = hoverId;
 
-            const startPosition = Math.min(placeHolderSrcPosition, hoverPosition);
-            const endPosition = Math.max(placeHolderSrcPosition, hoverPosition);
+            const placeHolderSrcPosition = this.model.getPosition(this.pivotId);
+            const hoverPosition = this.model.getPosition(hoverId);
 
-            const entriesInBetween = [...this.dataEntries.entries()].filter(([id, entry]) => {
-                const { position } = entry;
-                return position >= startPosition && position <= endPosition;
+            const otherIds = (placeHolderSrcPosition > hoverPosition ?
+                this.model.getRange(hoverId, this.pivotId) :
+                this.model.getRange(this.pivotId, hoverId))
+                .filter(id => id !== this.pivotId);
+
+            otherIds.forEach(id => {
+                this.dataEntries.get(id)!.wrapper.style.color = 'red';
             });
-            entriesInBetween.forEach(([id, entry]) => {
-                entry.wrapper.style.color = 'red';
-            });
 
-            const pivot = this.dataEntries.get(this.placeHolderSrcId)!.wrapper;
-            const others = entriesInBetween.map(([id, entry]) => entry.wrapper).filter(element => element !== pivot);
+            const pivot = this.dataEntries.get(this.pivotId)!;
+            const others = otherIds.map(id => this.dataEntries.get(id)!);
             if (hoverPosition > placeHolderSrcPosition) {
-                element.style.backgroundColor = 'blue';
+                // element.style.backgroundColor = 'blue';
                 this.listState = 'swapstart';
-                this.swapper = new Swapper(pivot, others);
+                this.swapper = new Swapper(pivot.wrapper, others.map(entry => entry.wrapper));
             } else if (hoverPosition < placeHolderSrcPosition) {
-                element.style.backgroundColor = 'green';
+                // element.style.backgroundColor = 'green';
                 this.listState = 'swapstart';
-                this.swapper = new Swapper(pivot, others);
+                this.swapper = new Swapper(pivot.wrapper, others.map(entry => entry.wrapper));
+            } else {
+                console.log("Same position");
+
             }
         });
         if (this.listState === 'swapstart') {
@@ -150,14 +156,15 @@ export class SortableList<T> {
             await this.swapper!.swap();
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // update ids and positions
-            this.updatePositions();
-            this.placeHolderSrcId = this.placeHolderDstId;
+            // swap positions
+            console.log(`swapping ${this.selectedIds} with ${this.targetId}`, this.selectedIds);
+            this.model.swapWithPivot(this.selectedIds, this.targetId, { pivotId: this.pivotId });
+
+            // remember new source id
             this.listState = 'dragging';
-            // this.selectedIds.forEach(id => this.deselect(id));
-            console.log(this.dataEntries);
 
             onSwapEnd && onSwapEnd();
+            console.log(this.model.ids, this.model.ids.map(id => this.dataEntries.get(id)!.data).join());
         }
     }
 
@@ -166,7 +173,7 @@ export class SortableList<T> {
         this.ghostsParent?.remove();
         this.selectedIds.forEach(id => this.deselect(id));
         const { onSwap } = this.options;
-        onSwap && onSwap(this.selectedIds.map(id => this.dataEntries.get(id)!), this.dataEntries.get(this.placeHolderDstId)!);
+        onSwap && onSwap(this.selectedIds.map(id => this.dataEntries.get(id)!), this.dataEntries.get(this.targetId)!);
     }
 
     private onHoldRelease(event: TouchEvent) {
@@ -185,6 +192,8 @@ export class SortableList<T> {
     }
 
     private onTap(sourceElementId: number, event: TouchEvent) {
+        console.log(this.dataEntries.get(sourceElementId));
+
         const { onTap } = this.options;
         if (this.listState === 'selecting') {
             this.toggleSelection(sourceElementId);
@@ -192,14 +201,6 @@ export class SortableList<T> {
         onTap && onTap(event);
     }
 
-    private updatePositions() {
-        [...root.children]
-            .filter(element => element.classList.contains('wrapper'))
-            .forEach((element, position) => {
-                this.dataEntries.get(parseInt(element.id))!.position = position;
-            });
-        console.log(root, [...this.dataEntries.entries()].map(([id, entry]) => entry).sort((a, b) => a.position - b.position).map(entry => entry.data).join());
-    }
 
     private createElement(data: T, idx: number) {
         const { render, animationDuration } = this.options;
@@ -269,11 +270,12 @@ export class SortableList<T> {
         const isAlreadySelected = this.selectedIds.includes(id);
         if (isAlreadySelected) return;
         this.selectedIds.push(id);
-        this.selectedIds.sort((a, b) => this.dataEntries.get(a)!.position - this.dataEntries.get(b)!.position);
         this.dataEntries.get(id)!.element.style.transform = 'scale(0.8)';
     }
 
     deselect(id: number) {
+        console.log(`Deselecting ${id}`);
+
         this.selectedIds = [...this.selectedIds.filter(i => i !== id)];
         this.dataEntries.get(id)!.element.style.transform = 'scale(1)';
         if (this.selectedIds.length !== 0) return;
