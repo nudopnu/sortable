@@ -5,6 +5,7 @@ import { DEFAULT_TOUCH_LISTENER_OPTIONS } from "./defaults";
 export class TouchListener {
 
     private touchState: TouchListenerState = 'idle';
+    private touchHoldTimeoutId?: number;
 
     constructor(element: HTMLElement, private options: TouchListenerOptions = {}) {
         this.options = {
@@ -19,6 +20,7 @@ export class TouchListener {
     }
 
     private onTouchend(event: TouchEvent) {
+        clearTimeout(this.touchHoldTimeoutId);
         const { onTap, onHoldRelease, onDragEnd } = this.options;
         if (this.touchState === 'touch') {
             onTap && onTap(event);
@@ -35,7 +37,7 @@ export class TouchListener {
         const { touches } = event;
         if (touches.length !== 1) return;
         this.touchState = 'touch';
-        setTimeout(() => {
+        this.touchHoldTimeoutId = setTimeout(() => {
             if (this.touchState === 'touch') {
                 this.touchState = 'hold';
                 onHold && onHold(event);

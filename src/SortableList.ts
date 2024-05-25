@@ -283,33 +283,3 @@ export class SortableList<T> {
     }
 
 }
-
-// example setup
-const data = ["A", "B", "C", "D", "E", "F", "G"];// "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
-const root = document.querySelector('#sortable') as HTMLElement;
-root.style.display = "inline-block";
-root.style.overflowY = "scroll";
-root.style.maxHeight = "300px";
-
-new SortableList(root, data, {
-    render: (data, index) => {
-        const element = document.createElement('div');
-        element.innerText = `${data} (${index})`;
-        element.style.height = "50px";
-        element.style.width = "50px";
-        element.style.marginBottom = "10px";
-        element.style.border = "1px solid grey";
-        element.style.textAlign = "center";
-        element.style.backgroundColor = "#fffa";
-        return element;
-    },
-    animationDuration: 300,
-    onSwap: (selection, target) => {
-    },
-    onDragStart: () => console.log('onDragStart'),
-    onScroll: () => console.log('onScroll'),
-    onSwapStart: () => console.log('onSwapStart'),
-    onSwapEnd: () => console.log('onSwapEnd'),
-    onTap: () => console.log('onTap'),
-    onHoldRelease: () => console.log('onHoldRelease'),
-});
