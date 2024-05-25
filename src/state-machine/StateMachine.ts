@@ -8,8 +8,11 @@ export type StateSettings<States extends string | number | symbol, Events extend
 };
 
 export type StateMachineSettings<States extends string | number | symbol, Events extends { name: string }> = {
-    [K in States]: StateSettings<States, Events>
-} & { entry: States }
+    entryState: States,
+    states: {
+        [K in States]: StateSettings<States, Events>
+    },
+}
 
 export class AbstractStateEvent<T> {
     constructor(public payload: T) { }
@@ -20,11 +23,11 @@ export class StateMachine<States extends string | number | symbol, Events extend
     currentState: States;
 
     constructor(public states: StateMachineSettings<States, Events>) {
-        this.currentState = states.entry;
+        this.currentState = states.entryState;
     }
 
     submit(event: Events) {
-        const callbacks = this.states[this.currentState];
+        const callbacks = this.states.states[this.currentState];
         const name = event.name as keyof typeof callbacks;
         if (!(name in callbacks)) return;
         const targetState = callbacks[name]!(event.payload);
