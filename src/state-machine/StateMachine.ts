@@ -29,6 +29,7 @@ export class StateMachine<T extends string> {
     }
 
     canTransitionTo(state: T) {
+        if (!(this.currentStateId in this.graph.adjacencies)) return false;
         const targetStateId = this.graph.vertices[state];
         const currentNeighbors = this.graph.adjacencies[this.currentStateId];
         return currentNeighbors.indexOf(targetStateId) !== -1;
