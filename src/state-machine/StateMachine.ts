@@ -17,14 +17,13 @@ export class AbstractStateEvent<T> {
 
 export class StateMachine<States extends string | number | symbol, Events extends { name: string; payload: any }> {
 
-    currentState: States | undefined;
+    currentState: States;
 
     constructor(public states: StateMachineSettings<States, Events>) {
         this.currentState = states.entry;
     }
 
     submit(event: Events) {
-        if (!this.currentState) return;
         const callbacks = this.states[this.currentState];
         const name = event.name as keyof typeof callbacks;
         if (!(name in callbacks)) return;
