@@ -1,43 +1,35 @@
-export interface Graph<T extends string> {
-    vertices: { [key in T]: number };
-    adjacencies: { [key in number]: number[] };
+export type StateEventName<T> = T extends { name: infer U extends string | number | symbol } ? U : never;
+export type EventFromName<EventName, T extends { name: string }> = T extends { name: EventName } ? T : never;
+export type PayloadFromEvent<T> = T extends AbstractStateEvent<infer U> ? U : never;
+export type PayloadFromEventName<StateName, T extends { name: string }> = PayloadFromEvent<EventFromName<StateName, T>>;
+
+export type StateSettings<States extends string | number | symbol, Events extends { name: string }> = {
+    [E in StateEventName<Events>]?: (payload: PayloadFromEventName<E, Events>) => States | void;
+};
+
+export type StateMachineSettings<States extends string | number | symbol, Events extends { name: string }> = {
+    [K in States]: StateSettings<States, Events>
+} & { entry: States }
+
+export class AbstractStateEvent<T> {
+    constructor(public payload: T) { }
 }
 
-export type StateMachineSettings<T extends string> = {
-    graph: Graph<T>;
-    startState: number;
+export class StateMachine<States extends string | number | symbol, Events extends { name: string; payload: any }> {
+
+    currentState: States | undefined;
+
+    constructor(public states: StateMachineSettings<States, Events>) {
+        this.currentState = states.entry;
+    }
+
+    submit(event: Events) {
+        if (!this.currentState) return;
+        const callbacks = this.states[this.currentState];
+        const name = event.name as keyof typeof callbacks;
+        if (!(name in callbacks)) return;
+        const targetState = callbacks[name]!(event.payload);
+        if (!targetState) return;
+        this.currentState = targetState;
+    }
 }
-
-export class StateMachine<T extends string> {
-
-    private currentStateId: number;
-    private idToState: { [key in number]: T };
-    graph: Graph<T>;
-
-    constructor(protected settings: StateMachineSettings<T>) {
-        const { startState, graph } = settings;
-        this.graph = graph;
-        this.currentStateId = startState;
-        this.idToState = {};
-        for (const [stateName, stateId] of Object.entries(graph.vertices)) {
-            this.idToState[stateId as number] = stateName as T;
-        }
-    }
-
-    current() {
-        return this.idToState[this.currentStateId];
-    }
-
-    canTransitionTo(state: T) {
-        if (!(this.currentStateId in this.graph.adjacencies)) return false;
-        const targetStateId = this.graph.vertices[state];
-        const currentNeighbors = this.graph.adjacencies[this.currentStateId];
-        return currentNeighbors.indexOf(targetStateId) !== -1;
-    }
-
-    transitionTo(state: T) {
-        this.currentStateId = this.graph.vertices[state];
-    }
-
-}
-
