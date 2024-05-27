@@ -1,22 +1,46 @@
 import { Swapper } from "./Swapper";
-import { getDefaultOptions } from "./defaults";
-import { TouchListener } from "./TouchListener";
-import { DataEntry, SortableListState, SortableOptions } from "./types";
 import { SwapperModel } from "./Swapper.model";
+import { TouchListener } from "./TouchListener";
+import { getDefaultOptions } from "./defaults";
+import { AbstractStateEvent } from "./state-machine/StateEvent";
+import { StateMachine } from "./state-machine/StateMachine";
+import { DataEntry, SortableOptions } from "./types";
+
+namespace SL {
+    export type States = 'Idle' | 'Selecting' | 'Dragging' | 'Swapping';
+    export class TapEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onTap" };
+    export class HoldEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onHold" };
+    export class HoldReleaseEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onHoldRelease" };
+    export class DragStartEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onDragStart" };
+    export class DragEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onDrag" };
+    export class DragEndEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onDragEnd" };
+    export class SwapStartEvent extends AbstractStateEvent<{ swapper: Swapper, swapperModel: SwapperModel, pivotId: number, targetId: number }> { readonly name = "onSwapStart" };
+    export class SwapEndEvent extends AbstractStateEvent<{ swapperModel: SwapperModel }> { readonly name = "onSwapEnd" };
+    export class ScrollEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onScroll" };
+    export type Events =
+        | TapEvent
+        | HoldEvent
+        | HoldReleaseEvent
+        | DragStartEvent
+        | DragEvent
+        | DragEndEvent
+        | SwapStartEvent
+        | SwapEndEvent
+        | ScrollEvent
+        ;
+}
 
 export class SortableList<T> {
 
-    private listState: SortableListState;
+    stateMachine: StateMachine<SL.States, SL.Events>;
     selectedIds: number[];
     dataEntries: Map<number, DataEntry<T>>;
-    ghostsParent: HTMLElement | undefined;
-    originalHeight = -1;
-    pivotId = -1;
-    targetId = -1;
-    swapper?: Swapper;
-    model: SwapperModel;
-
-    onSwapCompleteInternal: (() => void) | undefined;
+    swapData?: {
+        pivotId: number;
+        originalHeightOfPivot: number;
+        ghostsParent: HTMLElement;
+    }
+    animationFrameRequest: number | undefined;
 
     constructor(
         private rootElement: HTMLElement,
@@ -25,9 +49,30 @@ export class SortableList<T> {
     ) {
         this.selectedIds = [];
         this.dataEntries = new Map();
-        this.listState = 'idle';
         this.dataList.forEach((data, index) => this.initEntry(data, index));
-        this.model = new SwapperModel(dataList.map((_, id) => id));
+        this.stateMachine = new StateMachine<SL.States, SL.Events>({
+            entryState: "Idle",
+            states: {
+                Idle: {
+                    onTap: ({ index, touchEvent }) => { this.tap(index, touchEvent); },
+                    onHold: ({ index, touchEvent }) => { this.startSelecting(index, touchEvent); return "Selecting"; },
+                    onDragStart: ({ index, touchEvent }) => { this.startDragging(index, touchEvent); return "Dragging"; },
+                },
+                Selecting: {
+                    onTap: ({ index, touchEvent }) => { this.toggleSelection(index, touchEvent); if (this.selectedIds.length === 0) return "Idle"; },
+                    onDragStart: ({ index, touchEvent }) => { this.startDragging(index, touchEvent); return "Dragging"; },
+                },
+                Dragging: {
+                    onDrag: ({ touchEvent }) => { this.drag(touchEvent) },
+                    onSwapStart: ({ swapper, swapperModel, pivotId, targetId }) => { this.startSwap(swapper, swapperModel, pivotId, targetId); return "Swapping" },
+                    onDragEnd: () => { this.endDrag(); return "Idle" }
+                },
+                Swapping: {
+                    onSwapEnd: () => { this.endSwap(); return "Dragging" },
+                    onDragEnd: () => { this.endDrag(); return "Idle" }
+                },
+            }
+        });
     }
 
     private initEntry(data: T, index: number) {
@@ -37,143 +82,176 @@ export class SortableList<T> {
         wrapper.appendChild(element);
         this.rootElement.appendChild(wrapper);
 
-        // Add logic
+        // Add listeners
         const id = index;
         this.dataEntries.set(id, { data, wrapper, element });
         const { onScroll } = this.options;
         new TouchListener(wrapper, {
-            onTap: (event) => this.onTap(index, event),
-            onHold: (event) => this.onHold(index, event),
-            onHoldRelease: (event) => this.onHoldRelease(event),
-            onDragStart: (event) => this.onDragStart(index, event),
-            onDrag: (event) => this.onDrag(event),
-            onDragEnd: () => this.onDragEnd(),
+            onTap: (touchEvent) => this.stateMachine.submit(new SL.TapEvent({ index, touchEvent })),
+            onHold: (touchEvent) => this.stateMachine.submit(new SL.HoldEvent({ index, touchEvent })),
+            onHoldRelease: (touchEvent) => this.stateMachine.submit(new SL.HoldReleaseEvent({ index, touchEvent })),
+            onDragStart: (touchEvent) => this.stateMachine.submit(new SL.DragStartEvent({ index, touchEvent })),
+            onDrag: (touchEvent) => this.stateMachine.submit(new SL.DragEvent({ index, touchEvent })),
+            onDragEnd: (touchEvent) => this.stateMachine.submit(new SL.DragEndEvent({ index, touchEvent })),
             onScroll,
         });
     }
 
-    private onDragStart(sourceElementId: number, event: TouchEvent) {
-        this.listState = 'dragging';
+    private tap(id: number, event: TouchEvent) {
+        const { onTap } = this.options;
+        onTap && onTap(event);
+    }
+
+    private toggleSelection(id: number, event: TouchEvent) {
+        const isSelected = this.selectedIds.indexOf(id) !== -1;
+        if (isSelected) {
+            this.deselect(id);
+        } else {
+            this.select(id);
+        }
+        const { onTap } = this.options;
+        onTap && onTap(event);
+    }
+
+    private startSelecting(index: number, event: TouchEvent) {
+        this.select(index);
+        const { onHold } = this.options;
+        onHold && onHold(event);
+    }
+
+    private async startDragging(index: number, touchEvent: TouchEvent) {
 
         // Remember source element
-        const currentId = sourceElementId;
-        this.pivotId = currentId;
-        this.originalHeight = this.dataEntries.get(currentId)!.wrapper.getBoundingClientRect().height;
+        const currentId = index;
+        const pivotId = currentId;
+        const originalHeight = this.dataEntries.get(currentId)!.wrapper.getBoundingClientRect().height;
 
         // Create ghostsParent at original item position
         const { wrapper } = this.dataEntries.get(currentId)!;
         const { x, y } = wrapper.getBoundingClientRect();
 
-        this.ghostsParent = this.createGhostsParent(x, y);
-        const { clientX, clientY } = event.touches[0];
-        this.ghostsParent.style.left = `${clientX}px`;
-        this.ghostsParent.style.top = `${clientY}px`;
-        document.body.appendChild(this.ghostsParent);
+        const ghostsParent = this.createGhostsParent(x, y);
+        const { clientX, clientY } = touchEvent.touches[0];
+        ghostsParent.style.left = `${clientX}px`;
+        ghostsParent.style.top = `${clientY}px`;
+        document.body.appendChild(ghostsParent);
 
-        this.selectedIds.forEach(id => {
-            // Create ghost as child of ghostsParent
-            const dataEntry = this.dataEntries.get(id)!;
-            const { wrapper } = dataEntry;
-            const { x, y, height } = wrapper.getBoundingClientRect();
-            const ghost = this.createGhostFromWrapper(wrapper, x, y);
-            dataEntry.ghost = ghost;
+        this.swapData = {
+            pivotId,
+            originalHeightOfPivot: originalHeight,
+            ghostsParent,
+        };
 
-            // Prepare list item to be hidden
-            wrapper.style.maxHeight = `${height}px`;
+        await Promise.all(
+            this.selectedIds.map(id => new Promise<void>((resolve) => {
+                // Create ghost as child of ghostsParent
+                const dataEntry = this.dataEntries.get(id)!;
+                const { wrapper } = dataEntry;
+                const { x, y, height } = wrapper.getBoundingClientRect();
+                const ghost = this.createGhostFromWrapper(ghostsParent, wrapper, x, y);
+                ghostsParent.appendChild(ghost);
+                dataEntry.ghost = ghost;
 
-            setTimeout(() => {
-                // Visually exclude all list items from the list except for the one where the drag was initiated
-                if (id !== currentId) {
+                // Prepare list item to be hidden
+                wrapper.style.maxHeight = `${height}px`;
+
+                let transitionCount = 0;
+                let transitionElements = [wrapper, ghost];
+                setTimeout(() => {
+                    // Let each ghost fly to ghostsParent
+                    ghost.addEventListener('transitionend', transitionEnded);
+                    ghost.style.top = '0';
+                    ghost.style.left = '0';
+                    // Visually exclude all list items from the list except for the one where the drag was initiated
+                    if (id === currentId) return;
+                    wrapper.addEventListener('transitionend', transitionEnded);
                     wrapper.style.maxHeight = '0';
+                }, 10);
+                function transitionEnded() {
+                    transitionCount++; // Increment the count of completed transitions
+                    if (transitionCount >= transitionElements.length) {
+                        resolve(); // Call the function when all transitions are complete
+                    }
                 }
-                // Let each ghost fly to ghostsParent
-                ghost.style.top = '0';
-                ghost.style.left = '0';
-            }, 10);
-        });
+            }))
+        );
 
         // Delegate event
         const { onDragStart } = this.options;
-        onDragStart && onDragStart(event);
+        onDragStart && onDragStart(touchEvent);
     }
 
-    private async onDrag(event: TouchEvent) {
+    private async drag(event: TouchEvent) {
         let element: HTMLElement | undefined;
-        requestAnimationFrame(() => {
+        if (this.animationFrameRequest) {
+            cancelAnimationFrame(this.animationFrameRequest);
+        }
+        const swapperModel = new SwapperModel(this.dataList.map((_, id) => id));
 
-            // Only prepare for next swap if state is 'dragging'
-            if (this.listState !== 'dragging') return;
+        this.animationFrameRequest = requestAnimationFrame(() => {
 
             // shouldn't happen:
-            if (!this.ghostsParent) throw new Error("No GhostsParent found!");
+            if (!this.swapData) throw new Error("No SwapData found!");
+
+            const { ghostsParent, pivotId } = this.swapData;
 
             // Update ghostsParent's position
             const { clientX, clientY } = event.touches[0];
-            this.ghostsParent.style.top = `${clientY}px`;
-            this.ghostsParent.style.left = `${clientX}px`;
+            ghostsParent.style.top = `${clientY}px`;
+            ghostsParent.style.left = `${clientX}px`;
 
             // Get hovered element as possible swap target
             const elements = (document.elementsFromPoint(clientX, clientY) as HTMLElement[])
                 .filter(element => element.className === 'wrapper');
             if (elements.length !== 1) return;
             element = elements[0];
-
             const hoverId = parseInt(element.id);
-            this.targetId = hoverId;
+            const targetId = hoverId;
 
-            const placeHolderSrcPosition = this.model.getPosition(this.pivotId);
-            const hoverPosition = this.model.getPosition(hoverId);
+            const placeHolderSrcPosition = swapperModel.getPosition(pivotId);
+            const hoverPosition = swapperModel.getPosition(hoverId);
 
             const otherIds = (placeHolderSrcPosition > hoverPosition ?
-                this.model.getRange(hoverId, this.pivotId) :
-                this.model.getRange(this.pivotId, hoverId))
-                .filter(id => id !== this.pivotId);
+                swapperModel.getRange(hoverId, pivotId) :
+                swapperModel.getRange(pivotId, hoverId))
+                .filter(id => id !== pivotId);
 
             otherIds.forEach(id => {
                 this.dataEntries.get(id)!.wrapper.style.color = 'red';
             });
 
-            const pivot = this.dataEntries.get(this.pivotId)!;
+            const pivot = this.dataEntries.get(pivotId)!;
             const others = otherIds.map(id => this.dataEntries.get(id)!);
-            if (hoverPosition > placeHolderSrcPosition) {
-                // element.style.backgroundColor = 'blue';
-                this.listState = 'swapstart';
-                this.swapper = new Swapper(pivot.wrapper, others.map(entry => entry.wrapper));
-            } else if (hoverPosition < placeHolderSrcPosition) {
-                // element.style.backgroundColor = 'green';
-                this.listState = 'swapstart';
-                this.swapper = new Swapper(pivot.wrapper, others.map(entry => entry.wrapper));
-            } else {
-                console.log("Same position");
-
-            }
+            if (hoverPosition === placeHolderSrcPosition) return;
+            const swapper = new Swapper(pivot.wrapper, others.map(entry => entry.wrapper));
+            this.stateMachine.submit(new SL.SwapStartEvent({ swapper, targetId, pivotId, swapperModel }));
         });
-        if (this.listState === 'swapstart') {
-            const { onSwapStart, onSwapEnd } = this.options;
-            onSwapStart && onSwapStart();
-            this.listState = 'swap';
-            await new Promise(resolve => requestAnimationFrame(resolve));
-            await this.swapper!.swap();
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            // swap positions
-            console.log(`swapping ${this.selectedIds} with ${this.targetId}`, this.selectedIds);
-            this.model.swapWithPivot(this.selectedIds, this.targetId, { pivotId: this.pivotId });
-
-            // remember new source id
-            this.listState = 'dragging';
-
-            onSwapEnd && onSwapEnd();
-            console.log(this.model.ids, this.model.ids.map(id => this.dataEntries.get(id)!.data).join());
-        }
     }
 
-    private onDragEnd() {
-        this.listState = 'idle';
-        this.ghostsParent?.remove();
+    private async startSwap(swapper: Swapper, swapperModel: SwapperModel, pivotId: number, targetId: number) {
+        const { onSwapStart, onSwapEnd } = this.options;
+        onSwapStart && onSwapStart();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await swapper.swap();
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // swap positions
+        console.log(`swapping ${this.selectedIds} with ${targetId}`, this.selectedIds);
+        swapperModel.swapWithPivot(this.selectedIds, targetId, { pivotId: pivotId });
+
+        this.stateMachine.submit(new SL.SwapEndEvent({ swapperModel }));
+    }
+
+    private endSwap() {
+        const { onSwapEnd } = this.options;
+        onSwapEnd && onSwapEnd();
+    }
+
+    private endDrag() {
+        if (!this.swapData) throw new Error();
+        const { ghostsParent } = this.swapData;
+        ghostsParent.remove();
         this.selectedIds.forEach(id => this.deselect(id));
-        const { onSwap } = this.options;
-        onSwap && onSwap(this.selectedIds.map(id => this.dataEntries.get(id)!), this.dataEntries.get(this.targetId)!);
     }
 
     private onHoldRelease(event: TouchEvent) {
@@ -181,26 +259,6 @@ export class SortableList<T> {
         event.preventDefault();
         onHoldRelease && onHoldRelease(event);
     }
-
-    private onHold(index: number, event: TouchEvent) {
-        console.log(index, (event.target as HTMLElement).parentElement!.id);
-
-        this.listState = 'selecting';
-        this.select(index);
-        const { onHold } = this.options;
-        onHold && onHold(event);
-    }
-
-    private onTap(sourceElementId: number, event: TouchEvent) {
-        console.log(this.dataEntries.get(sourceElementId));
-
-        const { onTap } = this.options;
-        if (this.listState === 'selecting') {
-            this.toggleSelection(sourceElementId);
-        }
-        onTap && onTap(event);
-    }
-
 
     private createElement(data: T, idx: number) {
         const { render, animationDuration } = this.options;
@@ -238,16 +296,15 @@ export class SortableList<T> {
         return ghostsParent;
     }
 
-    private createGhostFromWrapper(wrapper: HTMLElement, x: number, y: number) {
+    private createGhostFromWrapper(ghostsParent: HTMLElement, wrapper: HTMLElement, x: number, y: number) {
         const { animationDuration } = this.options;
         // Calculate relative distance to ghosts parent
-        const { x: parentX, y: parentY } = this.ghostsParent!.getBoundingClientRect();
+        const { x: parentX, y: parentY } = ghostsParent.getBoundingClientRect();
         const deltaY = y - parentY;
         const deltaX = x - parentX;
 
         // Create ghost as child of ghostsParent
         const ghost = wrapper.cloneNode(true) as HTMLElement;
-        this.ghostsParent!.appendChild(ghost);
         ghost.className = 'ghost';
         ghost.style.userSelect = 'none';
         ghost.style.position = 'absolute';
@@ -255,15 +312,6 @@ export class SortableList<T> {
         ghost.style.left = `${deltaX}px`;
         ghost.style.transition = `top ${animationDuration}ms ease, left ${animationDuration}ms ease`;
         return ghost;
-    }
-
-    toggleSelection(id: number) {
-        const isSelected = this.selectedIds.indexOf(id) !== -1;
-        if (isSelected) {
-            this.deselect(id);
-        } else {
-            this.select(id);
-        }
     }
 
     select(id: number) {
@@ -276,8 +324,6 @@ export class SortableList<T> {
     deselect(id: number) {
         this.selectedIds = [...this.selectedIds.filter(i => i !== id)];
         this.dataEntries.get(id)!.element.style.transform = 'scale(1)';
-        if (this.selectedIds.length !== 0) return;
-        this.listState = 'idle';
     }
 
 }

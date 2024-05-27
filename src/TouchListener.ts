@@ -3,22 +3,24 @@ import { AbstractStateEvent } from "./state-machine/StateEvent";
 import { StateMachine } from "./state-machine/StateMachine";
 import { TouchListenerOptions } from "./types";
 
-class TouchMoveEvent extends AbstractStateEvent<TouchEvent> { name = "onTouchMove" }
-class TouchStartEvent extends AbstractStateEvent<TouchEvent> { name = "onTouchStart" }
-class TouchHoldEvent extends AbstractStateEvent<TouchEvent> { name = "onTouchHold" }
-class TouchEndEvent extends AbstractStateEvent<TouchEvent> { name = "onTouchEnd" }
+namespace TouchListenerNamespace {
+    export class TouchMoveEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchMove" }
+    export class TouchStartEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchStart" }
+    export class TouchHoldEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchHold" }
+    export class TouchEndEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchEnd" }
+    export type Events =
+        | TouchMoveEvent
+        | TouchStartEvent
+        | TouchHoldEvent
+        | TouchEndEvent
+        ;
+}
 
 type TouchStates = 'Idle' | 'Touch' | 'Hold' | 'Drag' | 'Scroll';
-type TouchStateEvents =
-    | TouchMoveEvent
-    | TouchStartEvent
-    | TouchHoldEvent
-    | TouchEndEvent
-    ;
 
 export class TouchListener {
 
-    private stateMachine: StateMachine<TouchStates, TouchStateEvents>;
+    stateMachine: StateMachine<TouchStates, TouchListenerNamespace.Events>;
     private touchHoldTimeoutId?: number;
 
     constructor(element: HTMLElement, private options: TouchListenerOptions = {}) {
@@ -27,31 +29,29 @@ export class TouchListener {
             ...options,
         };
         this.stateMachine = this.initStateMachine();
+        this.setupListeners(element);
         element.style.userSelect = 'none';
-        element.addEventListener('touchmove', (event) => this.stateMachine.submit(new TouchMoveEvent(event)), false);
-        element.addEventListener('touchstart', (event) => this.stateMachine.submit(new TouchStartEvent(event)));
-        element.addEventListener('touchend', (event) => this.stateMachine.submit(new TouchEndEvent(event)));
     }
 
     private initStateMachine() {
-        return new StateMachine<TouchStates, TouchStateEvents>({
+        return new StateMachine<TouchStates, TouchListenerNamespace.Events>({
             entryState: "Idle",
             states: {
                 Idle: {
-                    onTouchStart: (touchEvent) => { this.onTouchStart(touchEvent); return "Touch"; },
+                    onTouchStart: (touchEvent) => { this.startTouch(touchEvent); return "Touch"; },
                 },
                 Touch: {
-                    onTouchHold: (touchEvent) => { this.onHoldStart(touchEvent); return "Hold"; },
-                    onTouchEnd: (touchEvent) => { this.onTap(touchEvent); return "Idle"; },
-                    onTouchMove: (touchEvent) => { this.onScroll(touchEvent); return "Scroll"; },
+                    onTouchHold: (touchEvent) => { this.startHold(touchEvent); return "Hold"; },
+                    onTouchEnd: (touchEvent) => { this.tap(touchEvent); return "Idle"; },
+                    onTouchMove: (touchEvent) => { this.scroll(touchEvent); return "Scroll"; },
                 },
                 Hold: {
-                    onTouchEnd: (touchEvent) => { this.onHoldEnd(touchEvent); return "Idle"; },
-                    onTouchMove: (touchEvent) => { this.onDragStart(touchEvent); return "Drag"; },
+                    onTouchEnd: (touchEvent) => { this.endHold(touchEvent); return "Idle"; },
+                    onTouchMove: (touchEvent) => { this.startDrag(touchEvent); return "Drag"; },
                 },
                 Drag: {
-                    onTouchEnd: (touchEvent) => { this.onDragEnd(touchEvent); return "Idle"; },
-                    onTouchMove: (touchEvent) => { this.onDrag(touchEvent); },
+                    onTouchEnd: (touchEvent) => { this.endDrag(touchEvent); return "Idle"; },
+                    onTouchMove: (touchEvent) => { this.drag(touchEvent); },
                 },
                 Scroll: {
                     onTouchEnd: () => "Idle",
@@ -60,49 +60,55 @@ export class TouchListener {
         });
     }
 
-    private onTouchStart(event: TouchEvent) {
+    private setupListeners(element: HTMLElement) {
+        element.addEventListener('touchmove', (event) => this.stateMachine.submit(new TouchListenerNamespace.TouchMoveEvent(event)), false);
+        element.addEventListener('touchstart', (event) => this.stateMachine.submit(new TouchListenerNamespace.TouchStartEvent(event)));
+        element.addEventListener('touchend', (event) => this.stateMachine.submit(new TouchListenerNamespace.TouchEndEvent(event)));
+    }
+
+    private startTouch(event: TouchEvent) {
         const { minTimeToHold } = this.options;
         const { touches } = event;
         if (touches.length !== 1) return;
         this.touchHoldTimeoutId = setTimeout(() => {
-            this.stateMachine.submit(new TouchHoldEvent(event));
+            this.stateMachine.submit(new TouchListenerNamespace.TouchHoldEvent(event));
         }, minTimeToHold);
     }
 
-    private onTap(event: TouchEvent) {
+    private tap(event: TouchEvent) {
         const { onTap } = this.options;
         clearTimeout(this.touchHoldTimeoutId);
         onTap && onTap(event);
     }
 
-    private onHoldStart(event: TouchEvent) {
+    private startHold(event: TouchEvent) {
         const { onHold } = this.options;
         onHold && onHold(event);
     }
 
-    private onHoldEnd(event: TouchEvent) {
+    private endHold(event: TouchEvent) {
         const { onHoldRelease } = this.options;
         onHoldRelease && onHoldRelease(event);
     }
 
-    private onDragStart(event: TouchEvent) {
+    private startDrag(event: TouchEvent) {
         const { onDragStart } = this.options;
         event.preventDefault();
         onDragStart && onDragStart(event);
     }
 
-    private onDrag(event: TouchEvent) {
+    private drag(event: TouchEvent) {
         const { onDrag } = this.options;
         event.preventDefault();
         onDrag && onDrag(event);
     }
 
-    private onDragEnd(event: TouchEvent) {
+    private endDrag(event: TouchEvent) {
         const { onDragEnd } = this.options;
         onDragEnd && onDragEnd(event);
     }
 
-    private onScroll(event: TouchEvent) {
+    private scroll(event: TouchEvent) {
         const { onScroll } = this.options;
         event.preventDefault();
         onScroll && onScroll(event);

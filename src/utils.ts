@@ -35,3 +35,15 @@ export class TwoWayMap<K, V> {
         return this.reverseMap.get(key);
     }
 }
+
+export function createListElement(innerText: string) {
+    const element = document.createElement('div');
+    element.innerText = innerText;
+    element.style.height = "50px";
+    element.style.width = "50px";
+    element.style.marginBottom = "10px";
+    element.style.border = "1px solid grey";
+    element.style.textAlign = "center";
+    element.style.backgroundColor = "#fffa";
+    return element;
+}

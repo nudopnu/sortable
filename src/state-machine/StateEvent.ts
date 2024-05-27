@@ -1,5 +1,5 @@
 export abstract class AbstractStateEvent<T> {
-    abstract name: string | number | symbol;
+    abstract readonly name: string | number | symbol;
     constructor(public payload: T) { }
 }
 

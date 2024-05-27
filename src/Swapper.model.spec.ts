@@ -1,4 +1,4 @@
-import { SwapperModel } from "../src/Swapper.model";
+import { SwapperModel } from "./Swapper.model";
 
 describe("Should swap correctly if...", () => {
 
