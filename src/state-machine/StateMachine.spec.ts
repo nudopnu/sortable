@@ -1,4 +1,5 @@
-import { AbstractStateEvent, StateMachine } from "./StateMachine";
+import { AbstractStateEvent } from "./StateEvent";
+import { StateMachine } from "./StateMachine";
 
 describe("Testing the StateMachine", () => {
 

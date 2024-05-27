@@ -6,10 +6,10 @@
 		"strictNullChecks": true,
 		"target": "ES2022",
 		"moduleResolution": "Node",
-		"module": "CommonJS",
+		"module": "ES2022",
 		"declaration": true,
 		"isolatedModules": true,
-		"noEmit": true,
+		"noEmit": false,
 		"outDir": "./dist",
 		"types": [
 			"jest",

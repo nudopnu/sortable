@@ -274,8 +274,6 @@ export class SortableList<T> {
     }
 
     deselect(id: number) {
-        console.log(`Deselecting ${id}`);
-
         this.selectedIds = [...this.selectedIds.filter(i => i !== id)];
         this.dataEntries.get(id)!.element.style.transform = 'scale(1)';
         if (this.selectedIds.length !== 0) return;
