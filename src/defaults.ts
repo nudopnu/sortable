@@ -6,7 +6,7 @@ export const DEFAULT_TOUCH_LISTENER_OPTIONS: TouchListenerOptions = {
 
 export function getDefaultOptions<T>(): SortableOptions<T> {
     return {
-        animationDuration: 300,
+        animationDuration: 200,
         render: (data) => {
             const element = document.createElement('div');
             element.innerText = JSON.stringify(data);

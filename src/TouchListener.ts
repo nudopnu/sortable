@@ -1,26 +1,11 @@
+import { TouchListenerStateMachine } from "./TouchListenerStateMachine";
 import { DEFAULT_TOUCH_LISTENER_OPTIONS } from "./defaults";
-import { AbstractStateEvent } from "./state-machine/StateEvent";
 import { StateMachine } from "./state-machine/StateMachine";
 import { TouchListenerOptions } from "./types";
 
-namespace TouchListenerNamespace {
-    export class TouchMoveEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchMove" }
-    export class TouchStartEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchStart" }
-    export class TouchHoldEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchHold" }
-    export class TouchEndEvent extends AbstractStateEvent<TouchEvent> { readonly name = "onTouchEnd" }
-    export type Events =
-        | TouchMoveEvent
-        | TouchStartEvent
-        | TouchHoldEvent
-        | TouchEndEvent
-        ;
-}
-
-type TouchStates = 'Idle' | 'Touch' | 'Hold' | 'Drag' | 'Scroll';
-
 export class TouchListener {
 
-    stateMachine: StateMachine<TouchStates, TouchListenerNamespace.Events>;
+    stateMachine: StateMachine<TouchListenerStateMachine.States, TouchListenerStateMachine.Events>;
     private touchHoldTimeoutId?: number;
 
     constructor(element: HTMLElement, private options: TouchListenerOptions = {}) {
@@ -34,7 +19,7 @@ export class TouchListener {
     }
 
     private initStateMachine() {
-        return new StateMachine<TouchStates, TouchListenerNamespace.Events>({
+        return new StateMachine<TouchListenerStateMachine.States, TouchListenerStateMachine.Events>({
             entryState: "Idle",
             states: {
                 Idle: {
@@ -61,9 +46,9 @@ export class TouchListener {
     }
 
     private setupListeners(element: HTMLElement) {
-        element.addEventListener('touchmove', (event) => this.stateMachine.submit(new TouchListenerNamespace.TouchMoveEvent(event)), false);
-        element.addEventListener('touchstart', (event) => this.stateMachine.submit(new TouchListenerNamespace.TouchStartEvent(event)));
-        element.addEventListener('touchend', (event) => this.stateMachine.submit(new TouchListenerNamespace.TouchEndEvent(event)));
+        element.addEventListener('touchmove', (event) => this.stateMachine.submit(new TouchListenerStateMachine.TouchMoveEvent(event)), false);
+        element.addEventListener('touchstart', (event) => this.stateMachine.submit(new TouchListenerStateMachine.TouchStartEvent(event)));
+        element.addEventListener('touchend', (event) => this.stateMachine.submit(new TouchListenerStateMachine.TouchEndEvent(event)));
     }
 
     private startTouch(event: TouchEvent) {
@@ -71,7 +56,7 @@ export class TouchListener {
         const { touches } = event;
         if (touches.length !== 1) return;
         this.touchHoldTimeoutId = setTimeout(() => {
-            this.stateMachine.submit(new TouchListenerNamespace.TouchHoldEvent(event));
+            this.stateMachine.submit(new TouchListenerStateMachine.TouchHoldEvent(event));
         }, minTimeToHold);
     }
 

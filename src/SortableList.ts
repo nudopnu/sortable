@@ -1,38 +1,14 @@
+import { SortableListStateMachine } from "./SortableListStateMachine";
 import { Swapper } from "./Swapper";
 import { SwapperModel } from "./Swapper.model";
 import { TouchListener } from "./TouchListener";
 import { getDefaultOptions } from "./defaults";
-import { AbstractStateEvent } from "./state-machine/StateEvent";
 import { StateMachine } from "./state-machine/StateMachine";
 import { DataEntry, SortableOptions } from "./types";
 
-namespace SL {
-    export type States = 'Idle' | 'Selecting' | 'Dragging' | 'Swapping';
-    export class TapEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onTap" };
-    export class HoldEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onHold" };
-    export class HoldReleaseEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onHoldRelease" };
-    export class DragStartEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onDragStart" };
-    export class DragEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onDrag" };
-    export class DragEndEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onDragEnd" };
-    export class SwapStartEvent extends AbstractStateEvent<{ swapper: Swapper, swapperModel: SwapperModel, pivotId: number, targetId: number }> { readonly name = "onSwapStart" };
-    export class SwapEndEvent extends AbstractStateEvent<{ swapperModel: SwapperModel }> { readonly name = "onSwapEnd" };
-    export class ScrollEvent extends AbstractStateEvent<{ index: number, touchEvent: TouchEvent }> { readonly name = "onScroll" };
-    export type Events =
-        | TapEvent
-        | HoldEvent
-        | HoldReleaseEvent
-        | DragStartEvent
-        | DragEvent
-        | DragEndEvent
-        | SwapStartEvent
-        | SwapEndEvent
-        | ScrollEvent
-        ;
-}
-
 export class SortableList<T> {
 
-    stateMachine: StateMachine<SL.States, SL.Events>;
+    stateMachine: StateMachine<SortableListStateMachine.States, SortableListStateMachine.Events>;
     selectedIds: number[];
     dataEntries: Map<number, DataEntry<T>>;
     swapData?: {
@@ -41,6 +17,7 @@ export class SortableList<T> {
         ghostsParent: HTMLElement;
     }
     animationFrameRequest: number | undefined;
+    swapperModel: SwapperModel;
 
     constructor(
         private rootElement: HTMLElement,
@@ -50,7 +27,8 @@ export class SortableList<T> {
         this.selectedIds = [];
         this.dataEntries = new Map();
         this.dataList.forEach((data, index) => this.initEntry(data, index));
-        this.stateMachine = new StateMachine<SL.States, SL.Events>({
+        this.swapperModel = new SwapperModel(this.dataList.map((_, id) => id));
+        this.stateMachine = new StateMachine<SortableListStateMachine.States, SortableListStateMachine.Events>({
             entryState: "Idle",
             states: {
                 Idle: {
@@ -64,11 +42,11 @@ export class SortableList<T> {
                 },
                 Dragging: {
                     onDrag: ({ touchEvent }) => { this.drag(touchEvent) },
-                    onSwapStart: ({ swapper, swapperModel, pivotId, targetId }) => { this.startSwap(swapper, swapperModel, pivotId, targetId); return "Swapping" },
+                    onSwapStart: ({ swapper, pivotId, targetId, touchEvent }) => { this.startSwap(swapper, pivotId, targetId, touchEvent); return "Swapping" },
                     onDragEnd: () => { this.endDrag(); return "Idle" }
                 },
                 Swapping: {
-                    onSwapEnd: () => { this.endSwap(); return "Dragging" },
+                    onSwapEnd: ({ index, touchEvent }) => { this.endSwap(index, touchEvent); return "Dragging" },
                     onDragEnd: () => { this.endDrag(); return "Idle" }
                 },
             }
@@ -87,12 +65,12 @@ export class SortableList<T> {
         this.dataEntries.set(id, { data, wrapper, element });
         const { onScroll } = this.options;
         new TouchListener(wrapper, {
-            onTap: (touchEvent) => this.stateMachine.submit(new SL.TapEvent({ index, touchEvent })),
-            onHold: (touchEvent) => this.stateMachine.submit(new SL.HoldEvent({ index, touchEvent })),
-            onHoldRelease: (touchEvent) => this.stateMachine.submit(new SL.HoldReleaseEvent({ index, touchEvent })),
-            onDragStart: (touchEvent) => this.stateMachine.submit(new SL.DragStartEvent({ index, touchEvent })),
-            onDrag: (touchEvent) => this.stateMachine.submit(new SL.DragEvent({ index, touchEvent })),
-            onDragEnd: (touchEvent) => this.stateMachine.submit(new SL.DragEndEvent({ index, touchEvent })),
+            onTap: (touchEvent) => this.stateMachine.submit(new SortableListStateMachine.TapEvent({ index, touchEvent })),
+            onHold: (touchEvent) => this.stateMachine.submit(new SortableListStateMachine.HoldEvent({ index, touchEvent })),
+            onHoldRelease: (touchEvent) => this.stateMachine.submit(new SortableListStateMachine.HoldReleaseEvent({ index, touchEvent })),
+            onDragStart: (touchEvent) => this.stateMachine.submit(new SortableListStateMachine.DragStartEvent({ index, touchEvent })),
+            onDrag: (touchEvent) => this.stateMachine.submit(new SortableListStateMachine.DragEvent({ index, touchEvent })),
+            onDragEnd: (touchEvent) => this.stateMachine.submit(new SortableListStateMachine.DragEndEvent({ index, touchEvent })),
             onScroll,
         });
     }
@@ -186,8 +164,6 @@ export class SortableList<T> {
         if (this.animationFrameRequest) {
             cancelAnimationFrame(this.animationFrameRequest);
         }
-        const swapperModel = new SwapperModel(this.dataList.map((_, id) => id));
-
         this.animationFrameRequest = requestAnimationFrame(() => {
 
             // shouldn't happen:
@@ -208,12 +184,12 @@ export class SortableList<T> {
             const hoverId = parseInt(element.id);
             const targetId = hoverId;
 
-            const placeHolderSrcPosition = swapperModel.getPosition(pivotId);
-            const hoverPosition = swapperModel.getPosition(hoverId);
+            const placeHolderSrcPosition = this.swapperModel.getPosition(pivotId);
+            const hoverPosition = this.swapperModel.getPosition(hoverId);
 
             const otherIds = (placeHolderSrcPosition > hoverPosition ?
-                swapperModel.getRange(hoverId, pivotId) :
-                swapperModel.getRange(pivotId, hoverId))
+                this.swapperModel.getRange(hoverId, pivotId) :
+                this.swapperModel.getRange(pivotId, hoverId))
                 .filter(id => id !== pivotId);
 
             otherIds.forEach(id => {
@@ -224,11 +200,11 @@ export class SortableList<T> {
             const others = otherIds.map(id => this.dataEntries.get(id)!);
             if (hoverPosition === placeHolderSrcPosition) return;
             const swapper = new Swapper(pivot.wrapper, others.map(entry => entry.wrapper));
-            this.stateMachine.submit(new SL.SwapStartEvent({ swapper, targetId, pivotId, swapperModel }));
+            this.stateMachine.submit(new SortableListStateMachine.SwapStartEvent({ swapper, targetId, pivotId, touchEvent: event }));
         });
     }
 
-    private async startSwap(swapper: Swapper, swapperModel: SwapperModel, pivotId: number, targetId: number) {
+    private async startSwap(swapper: Swapper, pivotId: number, targetId: number, touchEvent: TouchEvent) {
         const { onSwapStart, onSwapEnd } = this.options;
         onSwapStart && onSwapStart();
         await new Promise(resolve => requestAnimationFrame(resolve));
@@ -237,14 +213,15 @@ export class SortableList<T> {
 
         // swap positions
         console.log(`swapping ${this.selectedIds} with ${targetId}`, this.selectedIds);
-        swapperModel.swapWithPivot(this.selectedIds, targetId, { pivotId: pivotId });
+        this.swapperModel.swapWithPivot(this.selectedIds, targetId, { pivotId: pivotId });
 
-        this.stateMachine.submit(new SL.SwapEndEvent({ swapperModel }));
+        this.stateMachine.submit(new SortableListStateMachine.SwapEndEvent({ index: pivotId, touchEvent }));
     }
 
-    private endSwap() {
+    private endSwap(index: number, touchEvent: TouchEvent) {
         const { onSwapEnd } = this.options;
         onSwapEnd && onSwapEnd();
+        this.stateMachine.submit(new SortableListStateMachine.DragEvent({ index, touchEvent }));
     }
 
     private endDrag() {
